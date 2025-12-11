@@ -7,6 +7,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.WebSocketManager = void 0;
 const ws_1 = require("ws");
 const simulation_js_1 = require("../services/simulation.js");
+const index_js_1 = require("../stores/index.js");
 class WebSocketManager {
     constructor(server) {
         this.clients = new Set();
@@ -24,7 +25,7 @@ class WebSocketManager {
         this.wss.on('connection', (ws) => {
             const client = ws;
             client.isAlive = true;
-            client.subscriptions = new Set(['tick', 'prediction', 'alert', 'cascade', 'mitigation']);
+            client.subscriptions = new Set(['tick', 'prediction', 'alert', 'cascade', 'mitigation', 'incident']);
             this.clients.add(client);
             console.log(`WebSocket client connected (total: ${this.clients.size})`);
             // Send initial state
@@ -151,9 +152,20 @@ class WebSocketManager {
                 data: alert,
                 timestamp: new Date().toISOString(),
             });
+            // Log the alert
+            index_js_1.logStore.addSystemLog('alert', `Alert: ${alert.title || alert.message}`, {
+                alertId: alert.id,
+                severity: alert.severity,
+            });
         });
-        // Cascade events - send full data for timeline
+        // Cascade events - send full data for timeline AND create incident
         sim.on('cascade', (event) => {
+            // Create or find incident for this cascade
+            let incident = index_js_1.incidentStore.findByCascadeEventId(event.id);
+            if (!incident) {
+                incident = index_js_1.incidentStore.createFromCascade(event.id, event.originNode, event.affectedNodes, event.severity || event.impactScore || 0.5);
+            }
+            // Broadcast cascade
             this.broadcast('cascade', {
                 type: 'cascade',
                 data: {
@@ -169,8 +181,22 @@ class WebSocketManager {
                     endedAt: event.endedAt,
                     startTime: event.startTime || event.startedAt || new Date().toISOString(),
                     endTime: event.endTime || event.endedAt,
+                    incidentId: incident.id,
                 },
                 timestamp: new Date().toISOString(),
+            });
+            // Broadcast incident creation
+            this.broadcast('incident', {
+                type: 'incident',
+                data: incident,
+                timestamp: new Date().toISOString(),
+            });
+            // Log the cascade
+            index_js_1.logStore.addSystemLog('incident', `Cascade failure: ${event.affectedNodes.length} nodes affected`, {
+                cascadeId: event.id,
+                incidentId: incident.id,
+                originNode: event.originNode,
+                impactScore: event.impactScore,
             });
         });
         // Mitigation events

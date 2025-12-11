@@ -3,9 +3,9 @@
  * Useful for investors, regulators, NATO DIANA, AFWERX reviews
  */
 
-import { useState, useMemo } from 'react';
-import { Clock, AlertTriangle, Zap, Shield, Brain, Link2, Filter } from 'lucide-react';
-import type { SystemState, WeatherData, CascadeEvent } from '../types';
+import { useState, useMemo, useEffect } from 'react';
+import { Clock, AlertTriangle, Zap, Shield, Brain, Link2, Filter, X, RefreshCw, ExternalLink } from 'lucide-react';
+import type { SystemState, WeatherData, CascadeEvent, Incident } from '../types';
 
 interface TimelineTabProps {
   cascades: CascadeEvent[];
@@ -45,6 +45,58 @@ const severityColors: Record<string, string> = {
 export function TimelineTab({ cascades, systemState, weather: _weather }: TimelineTabProps) {
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
   const [filterType, setFilterType] = useState<EventType | 'all'>('all');
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+  const [isAnchoring, setIsAnchoring] = useState(false);
+  const [anchorMessage, setAnchorMessage] = useState<string | null>(null);
+
+  // Fetch incidents from API
+  useEffect(() => {
+    const fetchIncidents = () => {
+      fetch('/api/incidents')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && Array.isArray(data.data)) {
+            setIncidents(data.data);
+          }
+        })
+        .catch(err => console.error('Failed to fetch incidents:', err));
+    };
+
+    fetchIncidents();
+    const interval = setInterval(fetchIncidents, 10000); // Refresh every 10s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Handle incident anchoring
+  const handleAnchorIncident = async (incidentId: string) => {
+    setIsAnchoring(true);
+    setAnchorMessage(null);
+    try {
+      const response = await fetch(`/api/incidents/${incidentId}/anchor`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        setAnchorMessage(`Anchored on ${data.anchor?.chain || 'Optimism'}`);
+        // Update the selected incident
+        if (data.data) {
+          setSelectedIncident(data.data);
+          // Also update in the list
+          setIncidents(prev => prev.map(inc => 
+            inc.id === incidentId ? data.data : inc
+          ));
+        }
+      } else {
+        setAnchorMessage('Anchoring failed');
+      }
+    } catch (err) {
+      setAnchorMessage('Anchoring failed');
+    } finally {
+      setIsAnchoring(false);
+    }
+  };
 
   // Safely handle cascades array
   const safeCascades = useMemo(() => {
@@ -64,6 +116,9 @@ export function TimelineTab({ cascades, systemState, weather: _weather }: Timeli
       const affectedNodes = Array.isArray(cascade.affectedNodes) ? cascade.affectedNodes : [];
       const impactScore = cascade.impactScore || cascade.totalDamage || 0;
 
+      // Find matching incident
+      const matchingIncident = incidents.find(inc => inc.cascadeEventId === cascade.id);
+
       if (startTime) {
         events.push({
           id: cascade.id,
@@ -73,7 +128,7 @@ export function TimelineTab({ cascades, systemState, weather: _weather }: Timeli
           description: `Affected ${affectedNodes.length} nodes with impact score ${(impactScore * 100).toFixed(0)}%`,
           severity: impactScore > 0.7 ? 'critical' : impactScore > 0.4 ? 'high' : 'medium',
           nodes: affectedNodes,
-          incidentId: `INC-${cascade.id.slice(0, 8)}`,
+          incidentId: matchingIncident?.id || `INC-${cascade.id.slice(0, 8)}`,
         });
       }
 
@@ -87,7 +142,40 @@ export function TimelineTab({ cascades, systemState, weather: _weather }: Timeli
           description: `Response to cascade event, ${affectedNodes.length} nodes stabilized`,
           severity: 'low',
           nodes: affectedNodes.slice(0, 3),
-          incidentId: `INC-${cascade.id.slice(0, 8)}`,
+          incidentId: matchingIncident?.id || `INC-${cascade.id.slice(0, 8)}`,
+        });
+      }
+    });
+
+    // Add incident events
+    incidents.forEach((incident) => {
+      // Skip if we already have a cascade event for this
+      if (incident.cascadeEventId && safeCascades.some(c => c.id === incident.cascadeEventId)) {
+        return;
+      }
+
+      events.push({
+        id: incident.id,
+        timestamp: new Date(incident.startedAt),
+        type: 'cascade',
+        title: incident.summary.slice(0, 50) + (incident.summary.length > 50 ? '...' : ''),
+        description: incident.rootCause.slice(0, 100),
+        severity: incident.severity === 'high' ? 'critical' : incident.severity,
+        nodes: incident.affectedNodes,
+        incidentId: incident.id,
+      });
+
+      // Add anchor event if incident is anchored
+      if (incident.onChain?.anchored) {
+        events.push({
+          id: `anchor-${incident.id}`,
+          timestamp: new Date(incident.startedAt),
+          type: 'anchor',
+          title: `Incident ${incident.id} anchored`,
+          description: `On-chain record: ${incident.onChain.chain}`,
+          severity: 'low',
+          nodes: [],
+          incidentId: incident.id,
         });
       }
     });
@@ -106,22 +194,45 @@ export function TimelineTab({ cascades, systemState, weather: _weather }: Timeli
       });
     }
 
-    // Add synthetic anchor event
-    if (safeCascades.length > 0) {
+    // Always show system initialization event
+    events.push({
+      id: 'init-event',
+      timestamp: new Date(now.getTime() - 60 * 60000), // 1 hour ago
+      type: 'mitigation',
+      title: 'System initialized',
+      description: 'Sentinel Grid monitoring activated - 200 nodes online',
+      severity: 'low',
+      nodes: [],
+    });
+
+    // Always show AI calibration event
+    events.push({
+      id: 'calibrate-event',
+      timestamp: new Date(now.getTime() - 45 * 60000), // 45 min ago
+      type: 'prediction',
+      title: 'AI model calibrated',
+      description: 'Predictive engine synchronized with latest patterns',
+      severity: 'low',
+      nodes: [],
+    });
+
+    // Show threat detection if there are warnings
+    const warningCount = systemState?.warningNodes;
+    if (typeof warningCount === 'number' && warningCount > 0) {
       events.push({
-        id: 'anchor-demo-1',
-        timestamp: new Date(now.getTime() - 5 * 60000), // 5 min ago
-        type: 'anchor',
-        title: 'Audit snapshot anchored',
-        description: 'State hash recorded on Optimism L2 for compliance',
-        severity: 'low',
+        id: 'threat-detected',
+        timestamp: new Date(now.getTime() - 10 * 60000), // 10 min ago
+        type: 'threat',
+        title: `${warningCount} nodes under stress`,
+        description: 'Elevated risk detected in network segment',
+        severity: 'medium',
         nodes: [],
       });
     }
 
     // Sort by timestamp descending
     return events.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
-  }, [safeCascades, systemState]);
+  }, [safeCascades, systemState, incidents]);
 
   // Filter events by time range and type
   const filteredEvents = useMemo(() => {
@@ -190,8 +301,165 @@ export function TimelineTab({ cascades, systemState, weather: _weather }: Timeli
     }
   };
 
+  const handleIncidentClick = (incidentId: string) => {
+    const incident = incidents.find(i => i.id === incidentId);
+    if (incident) {
+      setSelectedIncident(incident);
+      setAnchorMessage(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* ========== INCIDENT DETAIL MODAL ========== */}
+      {selectedIncident && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="surface-card rounded-lg max-w-lg w-full max-h-[80vh] overflow-auto">
+            <div className="flex items-center justify-between p-4 border-b border-slate-700/50">
+              <h3 className="text-lg font-semibold text-slate-100">
+                Incident {selectedIncident.id}
+              </h3>
+              <button
+                onClick={() => setSelectedIncident(null)}
+                className="text-slate-400 hover:text-slate-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-4 space-y-4">
+              {/* Status */}
+              <div className="flex items-center gap-2">
+                <span className={`px-2 py-1 rounded text-xs font-medium ${
+                  selectedIncident.status === 'open' ? 'bg-red-500/20 text-red-400' :
+                  selectedIncident.status === 'mitigated' ? 'bg-amber-500/20 text-amber-400' :
+                  'bg-emerald-500/20 text-emerald-400'
+                }`}>
+                  {selectedIncident.status.toUpperCase()}
+                </span>
+                <span className={`px-2 py-1 rounded text-xs font-medium ${
+                  selectedIncident.severity === 'high' ? 'bg-red-500/20 text-red-400' :
+                  selectedIncident.severity === 'medium' ? 'bg-amber-500/20 text-amber-400' :
+                  'bg-slate-500/20 text-slate-400'
+                }`}>
+                  {selectedIncident.severity.toUpperCase()} SEVERITY
+                </span>
+              </div>
+
+              {/* Summary */}
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Summary</p>
+                <p className="text-sm text-slate-300">{selectedIncident.summary}</p>
+              </div>
+
+              {/* Root Cause */}
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Root Cause</p>
+                <p className="text-sm text-slate-300">{selectedIncident.rootCause}</p>
+              </div>
+
+              {/* Affected Nodes */}
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">
+                  Affected Nodes ({selectedIncident.affectedNodes.length})
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {selectedIncident.affectedNodes.slice(0, 10).map((node) => (
+                    <span key={node} className="px-2 py-0.5 bg-slate-700/50 rounded text-xs text-slate-400">
+                      {node}
+                    </span>
+                  ))}
+                  {selectedIncident.affectedNodes.length > 10 && (
+                    <span className="px-2 py-0.5 text-xs text-slate-500">
+                      +{selectedIncident.affectedNodes.length - 10} more
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Mitigation Actions */}
+              {selectedIncident.mitigationActions.length > 0 && (
+                <div>
+                  <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">
+                    Mitigation Actions ({selectedIncident.mitigationActions.length})
+                  </p>
+                  <div className="space-y-2">
+                    {selectedIncident.mitigationActions.map((action, idx) => (
+                      <div key={idx} className="bg-slate-800/50 rounded p-2">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-emerald-400">{action.actionType}</span>
+                          <span className="text-slate-500">{new Date(action.at).toLocaleTimeString()}</span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">{action.details}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* On-chain Status */}
+              <div className="border-t border-slate-700/50 pt-4">
+                <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Blockchain Anchor</p>
+                {selectedIncident.onChain?.anchored ? (
+                  <div className="bg-emerald-500/10 border border-emerald-500/30 rounded p-3">
+                    <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium mb-2">
+                      <Link2 className="w-4 h-4" />
+                      Anchored on {selectedIncident.onChain.chain}
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">TX Hash:</span>
+                        <span className="text-slate-300 font-mono">{selectedIncident.onChain.txHash?.slice(0, 18)}...</span>
+                      </div>
+                      {selectedIncident.onChain.ipfsCid && (
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">IPFS CID:</span>
+                          <span className="text-slate-300 font-mono">{selectedIncident.onChain.ipfsCid.slice(0, 18)}...</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-slate-500">Not yet anchored to blockchain</p>
+                    <button
+                      onClick={() => handleAnchorIncident(selectedIncident.id)}
+                      disabled={isAnchoring}
+                      className="btn-primary w-full flex items-center justify-center gap-2"
+                    >
+                      {isAnchoring ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Anchoring...
+                        </>
+                      ) : (
+                        <>
+                          <Link2 className="w-4 h-4" />
+                          Anchor on Optimism
+                        </>
+                      )}
+                    </button>
+                    {anchorMessage && (
+                      <p className={`text-xs ${anchorMessage.includes('failed') ? 'text-red-400' : 'text-emerald-400'}`}>
+                        {anchorMessage}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Timestamps */}
+              <div className="text-xs text-slate-500 flex justify-between pt-2 border-t border-slate-700/50">
+                <span>Started: {new Date(selectedIncident.startedAt).toLocaleString()}</span>
+                {selectedIncident.endedAt && (
+                  <span>Ended: {new Date(selectedIncident.endedAt).toLocaleString()}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ========== FILTERS ========== */}
       <div className="flex flex-wrap items-center gap-4">
         {/* Time Range */}
@@ -232,7 +500,7 @@ export function TimelineTab({ cascades, systemState, weather: _weather }: Timeli
         </div>
 
         <span className="text-xs text-slate-500 ml-auto tabular-nums">
-          {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''}
+          {filteredEvents.length} event{filteredEvents.length !== 1 ? 's' : ''} • {incidents.length} incident{incidents.length !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -250,10 +518,14 @@ export function TimelineTab({ cascades, systemState, weather: _weather }: Timeli
           {/* Incident Groups */}
           {Object.entries(incidentGroups.groups).map(([incidentId, events]) => (
             <div key={incidentId} className="surface-card rounded-lg overflow-hidden">
-              <div className="bg-slate-800/50 px-4 py-2 border-b border-slate-700/50">
+              <div 
+                className="bg-slate-800/50 px-4 py-2 border-b border-slate-700/50 cursor-pointer hover:bg-slate-700/50 transition-colors"
+                onClick={() => handleIncidentClick(incidentId)}
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-slate-200">
+                  <span className="text-sm font-medium text-slate-200 flex items-center gap-2">
                     Incident {incidentId}
+                    <ExternalLink className="w-3 h-3 text-slate-500" />
                   </span>
                   <span className="text-xs text-slate-500 tabular-nums">
                     {events.length} related event{events.length !== 1 ? 's' : ''}

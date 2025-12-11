@@ -1,14 +1,39 @@
 "use strict";
 /**
  * Sentinel Grid Backend - Logs Export Route
- * GET /api/logs/export - Export incident and operator logs
+ * GET /api/logs - Get recent logs
+ * GET /api/logs/export - Export all logs
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const simulation_js_1 = require("../services/simulation.js");
 const index_js_1 = require("../db/index.js");
+const index_js_2 = require("../stores/index.js");
 const errorHandler_js_1 = require("../middleware/errorHandler.js");
 const router = (0, express_1.Router)();
+/**
+ * GET /api/logs
+ * Get recent operator log entries
+ */
+router.get('/', (0, errorHandler_js_1.asyncHandler)(async (req, res) => {
+    const limit = parseInt(req.query.limit) || 100;
+    const category = req.query.category;
+    const source = req.query.source;
+    let logs = index_js_2.logStore.getRecent(limit);
+    // Filter by category if provided
+    if (category) {
+        logs = logs.filter((l) => l.category === category);
+    }
+    // Filter by source if provided
+    if (source) {
+        logs = logs.filter((l) => l.source === source);
+    }
+    res.json({
+        success: true,
+        count: logs.length,
+        data: logs,
+    });
+}));
 /**
  * GET /api/logs/export
  * Export logs in JSON or CSV format
@@ -17,12 +42,29 @@ router.get('/export', (0, errorHandler_js_1.asyncHandler)(async (req, res) => {
     const format = req.query.format || 'json';
     const sim = (0, simulation_js_1.getSimulation)();
     // Gather all log data
+    const operatorLogs = index_js_2.logStore.getAll();
     const cascades = index_js_1.cascadeRepo.getAll.all();
     const alerts = sim.getAlerts();
     const auditLog = index_js_1.auditRepo.getAll.all();
     const state = sim.getState();
     // Build unified log entries
     const logEntries = [];
+    // Add operator logs
+    operatorLogs.forEach((l) => {
+        logEntries.push({
+            timestamp: l.timestamp,
+            type: 'operator',
+            severity: 'info',
+            description: l.message,
+            details: {
+                id: l.id,
+                source: l.source,
+                category: l.category,
+                user: l.user,
+                metadata: l.metadata,
+            },
+        });
+    });
     // Add cascades
     cascades.forEach((c) => {
         logEntries.push({
@@ -115,11 +157,13 @@ router.get('/export', (0, errorHandler_js_1.asyncHandler)(async (req, res) => {
  */
 router.get('/summary', (0, errorHandler_js_1.asyncHandler)(async (_req, res) => {
     const sim = (0, simulation_js_1.getSimulation)();
+    const operatorLogs = index_js_2.logStore.getAll();
     const cascades = index_js_1.cascadeRepo.getAll.all();
     const alerts = sim.getAlerts();
     const auditLog = index_js_1.auditRepo.getAll.all();
     res.json({
         data: {
+            operatorLogs: operatorLogs.length,
             cascades: cascades.length,
             alerts: alerts.length,
             auditEntries: auditLog.length,

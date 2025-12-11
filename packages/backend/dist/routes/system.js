@@ -6,6 +6,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const simulation_js_1 = require("../services/simulation.js");
+const index_js_1 = require("../stores/index.js");
 const errorHandler_js_1 = require("../middleware/errorHandler.js");
 const router = (0, express_1.Router)();
 /**
@@ -98,6 +99,7 @@ sentinel_simulation_running ${sim.isSimulationRunning() ? 1 : 0}
 router.post('/start', (_req, res) => {
     const sim = (0, simulation_js_1.getSimulation)();
     sim.start();
+    index_js_1.logStore.addOperatorLog('config', 'Simulation started');
     res.json({
         success: true,
         message: 'Simulation started',
@@ -111,6 +113,7 @@ router.post('/start', (_req, res) => {
 router.post('/stop', (_req, res) => {
     const sim = (0, simulation_js_1.getSimulation)();
     sim.stop();
+    index_js_1.logStore.addOperatorLog('config', 'Simulation stopped');
     res.json({
         success: true,
         message: 'Simulation stopped',
@@ -124,6 +127,7 @@ router.post('/stop', (_req, res) => {
 router.post('/reset', (_req, res) => {
     const sim = (0, simulation_js_1.getSimulation)();
     sim.reset();
+    index_js_1.logStore.addOperatorLog('config', 'Simulation reset');
     res.json({
         success: true,
         message: 'Simulation reset',

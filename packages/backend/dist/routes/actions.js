@@ -8,6 +8,7 @@ const express_1 = require("express");
 const zod_1 = require("zod");
 const simulation_js_1 = require("../services/simulation.js");
 const index_js_1 = require("../db/index.js");
+const index_js_2 = require("../stores/index.js");
 const errorHandler_js_1 = require("../middleware/errorHandler.js");
 const uuid_1 = require("uuid");
 const predictive_engine_1 = require("@sentinel-grid/predictive-engine");
@@ -16,6 +17,7 @@ const router = (0, express_1.Router)();
 const mitigateSchema = zod_1.z.object({
     nodeId: zod_1.z.string().min(1),
     action: zod_1.z.string().optional(),
+    incidentId: zod_1.z.string().optional(),
 });
 const autoMitigationSchema = zod_1.z.object({
     enabled: zod_1.z.boolean(),
@@ -25,7 +27,7 @@ const autoMitigationSchema = zod_1.z.object({
  * Apply mitigation to a node
  */
 router.post('/mitigate', (0, errorHandler_js_1.asyncHandler)(async (req, res) => {
-    const { nodeId } = mitigateSchema.parse(req.body);
+    const { nodeId, incidentId } = mitigateSchema.parse(req.body);
     const sim = (0, simulation_js_1.getSimulation)();
     const node = sim.getNode(nodeId);
     if (!node) {
@@ -63,6 +65,21 @@ router.post('/mitigate', (0, errorHandler_js_1.asyncHandler)(async (req, res) =>
         actor: 'operator',
         dataSummary: JSON.stringify(auditData),
     });
+    // Log the mitigation
+    index_js_2.logStore.addOperatorLog('mitigation', `Mitigation applied to ${result.node}`, {
+        nodeId,
+        success: result.success,
+        riskReduction: result.riskReduction,
+        actions: result.actions,
+    });
+    // If incident ID provided, add mitigation action to incident
+    if (incidentId) {
+        index_js_2.incidentStore.addMitigationAction(incidentId, {
+            at: new Date().toISOString(),
+            actionType: 'manual_mitigation',
+            details: `Applied mitigation to ${result.node}: ${result.actions.join(', ')}`,
+        });
+    }
     res.json({
         success: true,
         data: {
@@ -125,6 +142,11 @@ router.post('/mitigate/batch', (0, errorHandler_js_1.asyncHandler)(async (req, r
         actor: 'operator',
         dataSummary: JSON.stringify(auditData),
     });
+    // Log the batch mitigation
+    index_js_2.logStore.addOperatorLog('mitigation', `Batch mitigation: ${results.filter((r) => r.success).length}/${nodeIds.length} nodes`, {
+        nodeCount: nodeIds.length,
+        successful: results.filter((r) => r.success).length,
+    });
     res.json({
         success: true,
         message: `Mitigated ${results.filter((r) => r.success).length}/${nodeIds.length} nodes`,
@@ -163,6 +185,10 @@ router.post('/mitigate/critical', (0, errorHandler_js_1.asyncHandler)(async (_re
             riskReduction: result.riskReduction,
         });
     }
+    // Log the critical mitigation
+    index_js_2.logStore.addOperatorLog('mitigation', `Critical mitigation: ${results.length} nodes addressed`, {
+        nodeCount: results.length,
+    });
     res.json({
         success: true,
         message: `Mitigated ${results.length} critical nodes`,
@@ -177,6 +203,8 @@ router.put('/auto-mitigation', (0, errorHandler_js_1.asyncHandler)(async (req, r
     const { enabled } = autoMitigationSchema.parse(req.body);
     const sim = (0, simulation_js_1.getSimulation)();
     sim.setAutoMitigation(enabled);
+    // Log config change
+    index_js_2.logStore.addOperatorLog('config', `Auto-mitigation ${enabled ? 'enabled' : 'disabled'}`);
     res.json({
         success: true,
         message: `Auto-mitigation ${enabled ? 'enabled' : 'disabled'}`,

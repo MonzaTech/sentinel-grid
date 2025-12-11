@@ -5,6 +5,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getSimulation } from '../services/simulation.js';
+import { logStore } from '../stores/index.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 const router = Router();
@@ -106,6 +107,8 @@ sentinel_simulation_running ${sim.isSimulationRunning() ? 1 : 0}
 router.post('/start', (_req: Request, res: Response) => {
   const sim = getSimulation();
   sim.start();
+
+  logStore.addOperatorLog('config', 'Simulation started');
   
   res.json({
     success: true,
@@ -121,6 +124,8 @@ router.post('/start', (_req: Request, res: Response) => {
 router.post('/stop', (_req: Request, res: Response) => {
   const sim = getSimulation();
   sim.stop();
+
+  logStore.addOperatorLog('config', 'Simulation stopped');
   
   res.json({
     success: true,
@@ -136,6 +141,8 @@ router.post('/stop', (_req: Request, res: Response) => {
 router.post('/reset', (_req: Request, res: Response) => {
   const sim = getSimulation();
   sim.reset();
+
+  logStore.addOperatorLog('config', 'Simulation reset');
   
   res.json({
     success: true,

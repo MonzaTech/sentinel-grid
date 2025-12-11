@@ -115,7 +115,7 @@ export function MetricCard({
         {context && (
           <span className="text-metric-context truncate">{context}</span>
         )}
-        {onViewDetails && status && (status === 'critical' || status === 'elevated') && (
+        {onViewDetails && Number(displayValue) > 0 && (
           <button
             onClick={onViewDetails}
             className="text-[10px] text-blue-400 hover:text-blue-300 font-medium transition-colors flex-shrink-0"

@@ -11,6 +11,9 @@ import actionsRoutes from './actions';
 import auditRoutes from './audit';
 import anchorRoutes from './anchor';
 import logsRoutes from './logs';
+import scenariosRoutes from './scenarios';
+import incidentsRoutes from './incidents';
+import topologyRoutes from './topology';
 
 const router = Router();
 
@@ -24,6 +27,9 @@ router.use('/audit', auditRoutes);
 router.use('/anchors', anchorRoutes);
 router.use('/anchor', anchorRoutes); // Alias
 router.use('/logs', logsRoutes);
+router.use('/scenarios', scenariosRoutes);
+router.use('/incidents', incidentsRoutes);
+router.use('/topology', topologyRoutes);
 
 // Import pin and verify handlers directly for top-level routes
 import { pinHandler, verifyHandler } from './anchor';
@@ -60,6 +66,15 @@ router.get('/', (_req, res) => {
       'POST /api/anchor',
       'GET  /api/anchors',
       'POST /api/pin',
+      'GET  /api/logs',
+      'GET  /api/logs/export',
+      'GET  /api/scenarios/templates',
+      'POST /api/scenarios/run',
+      'GET  /api/incidents',
+      'GET  /api/incidents/:id',
+      'POST /api/incidents/:id/anchor',
+      'GET  /api/topology',
+      'POST /api/topology/import',
     ],
   });
 });

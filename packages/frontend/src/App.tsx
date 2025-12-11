@@ -141,14 +141,14 @@ export default function App() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#080a0f' }}>
         <div className="text-center">
           <img 
             src="/logo.png" 
             alt="Sentinel Grid" 
-            className="h-12 w-auto mx-auto mb-4 animate-pulse"
+            className="h-16 w-auto mx-auto mb-4 animate-pulse"
           />
-          <p className="text-sm text-slate-400">Initializing system...</p>
+          <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold">Initializing system...</p>
         </div>
       </div>
     );
@@ -157,7 +157,7 @@ export default function App() {
   // Error state
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#080a0f' }}>
         <div className="surface-card p-8 text-center max-w-lg">
           <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-4" />
           <h1 className="text-lg font-semibold text-slate-200 mb-2">Connection Error</h1>
@@ -196,7 +196,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col">
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#080a0f' }}>
       {/* ========== HEADER ========== */}
       <header className="surface-header sticky top-0 z-50">
         <div className="max-w-[1920px] mx-auto px-4 lg:px-6">
@@ -206,7 +206,7 @@ export default function App() {
               <img 
                 src="/logo.png" 
                 alt="Sentinel Grid - AI Resilience for a Connected World" 
-                className="h-10 w-auto"
+                className="h-14 w-auto"
               />
             </div>
 

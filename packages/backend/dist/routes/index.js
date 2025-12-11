@@ -15,6 +15,9 @@ const actions_1 = __importDefault(require("./actions"));
 const audit_1 = __importDefault(require("./audit"));
 const anchor_1 = __importDefault(require("./anchor"));
 const logs_1 = __importDefault(require("./logs"));
+const scenarios_1 = __importDefault(require("./scenarios"));
+const incidents_1 = __importDefault(require("./incidents"));
+const topology_1 = __importDefault(require("./topology"));
 const router = (0, express_1.Router)();
 // Mount routes
 router.use('/system', system_1.default);
@@ -26,6 +29,9 @@ router.use('/audit', audit_1.default);
 router.use('/anchors', anchor_1.default);
 router.use('/anchor', anchor_1.default); // Alias
 router.use('/logs', logs_1.default);
+router.use('/scenarios', scenarios_1.default);
+router.use('/incidents', incidents_1.default);
+router.use('/topology', topology_1.default);
 // Import pin and verify handlers directly for top-level routes
 const anchor_2 = require("./anchor");
 router.post('/pin', anchor_2.pinHandler);
@@ -60,6 +66,15 @@ router.get('/', (_req, res) => {
             'POST /api/anchor',
             'GET  /api/anchors',
             'POST /api/pin',
+            'GET  /api/logs',
+            'GET  /api/logs/export',
+            'GET  /api/scenarios/templates',
+            'POST /api/scenarios/run',
+            'GET  /api/incidents',
+            'GET  /api/incidents/:id',
+            'POST /api/incidents/:id/anchor',
+            'GET  /api/topology',
+            'POST /api/topology/import',
         ],
     });
 });

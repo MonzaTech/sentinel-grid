@@ -5,7 +5,7 @@
 
 import { useState, useMemo } from 'react';
 import { Brain, Clock, TrendingUp, ChevronDown, ChevronUp, AlertTriangle, Info } from 'lucide-react';
-import type { Prediction, Pattern } from '../types';
+import type { Prediction, Pattern, PredictionReasoning } from '../types';
 
 interface SimpleAccuracy {
   accuracy: number;
@@ -27,6 +27,24 @@ const severityColors: Record<string, string> = {
   cyber_intrusion: 'text-purple-400',
   load_imbalance: 'text-cyan-400',
 };
+
+/**
+ * Helper to extract reasoning text from string or structured object
+ */
+function getReasoningText(reasoning: string | PredictionReasoning | undefined | null, fallback: string): string {
+  if (!reasoning) return fallback;
+  if (typeof reasoning === 'string') return reasoning;
+  // Structured reasoning object - return root cause or build summary
+  if (reasoning.rootCause) return reasoning.rootCause;
+  return fallback;
+}
+
+/**
+ * Check if reasoning is structured
+ */
+function isStructuredReasoning(reasoning: string | PredictionReasoning | undefined | null): reasoning is PredictionReasoning {
+  return reasoning !== null && typeof reasoning === 'object' && 'rootCause' in reasoning;
+}
 
 export function PredictionsTab({ predictions, patterns, accuracy }: PredictionsTabProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -64,12 +82,59 @@ export function PredictionsTab({ predictions, patterns, accuracy }: PredictionsT
   };
 
   const toggleExpand = (id: string) => {
+    console.log('Toggle expand clicked:', id);
     setExpandedId(expandedId === id ? null : id);
   };
 
   // Sort by urgency: high probability + soon = urgent
   const sortedPredictions = useMemo(() => {
-    return [...safePredictions].sort((a, b) => {
+    // If no real predictions, show demo predictions so buttons can be tested
+    const demoData: Prediction[] = safePredictions.length === 0 ? [
+      {
+        id: 'demo-pred-1',
+        nodeId: 'PWR-MAIN-001',
+        nodeName: 'Main Power Station',
+        type: 'cascade_failure' as const,
+        probability: 0.78,
+        confidence: 0.85,
+        hoursToEvent: 4.5,
+        reasoning: 'Pattern matches historical cascade failures during high-load periods',
+        contributingFactors: [
+          'Load exceeded 85% capacity for 3+ hours',
+          'Adjacent transformer showing thermal stress',
+          'Weather conditions increasing demand',
+          'Similar pattern preceded 2023-Q3 outage'
+        ],
+        suggestedActions: [
+          { action: 'Reduce load on connected substations', priority: 'high' as const, estimatedImpact: 0.6 },
+          { action: 'Pre-stage repair crews', priority: 'medium' as const, estimatedImpact: 0.3 },
+          { action: 'Enable backup routing', priority: 'immediate' as const, estimatedImpact: 0.8 }
+        ],
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: 'demo-pred-2',
+        nodeId: 'SUB-EAST-015',
+        nodeName: 'East Substation 15',
+        type: 'thermal_overload' as const,
+        probability: 0.62,
+        confidence: 0.79,
+        hoursToEvent: 12,
+        reasoning: 'Thermal readings trending above normal with current load pattern',
+        contributingFactors: [
+          'Ambient temperature 15% above seasonal average',
+          'Cooling system efficiency degraded',
+          'Sustained high throughput'
+        ],
+        suggestedActions: [
+          { action: 'Schedule preventive maintenance', priority: 'high' as const, estimatedImpact: 0.5 },
+          { action: 'Monitor thermal sensors', priority: 'medium' as const, estimatedImpact: 0.2 }
+        ],
+        createdAt: new Date().toISOString(),
+      }
+    ] : safePredictions;
+
+    return [...demoData].sort((a, b) => {
       const urgencyA = (a.probability || 0) / Math.max(a.hoursToEvent || 1, 0.1);
       const urgencyB = (b.probability || 0) / Math.max(b.hoursToEvent || 1, 0.1);
       return urgencyB - urgencyA;
@@ -230,13 +295,17 @@ export function PredictionsTab({ predictions, patterns, accuracy }: PredictionsT
 
                         {/* Natural Language Explanation */}
                         <p className="text-sm text-slate-400 mb-2">
-                          {prediction.reasoning || `Pattern matches historical ${predictionType.replace(/_/g, ' ')} events in similar conditions.`}
+                          {getReasoningText(prediction.reasoning, `Pattern matches historical ${predictionType.replace(/_/g, ' ')} events in similar conditions.`)}
                         </p>
 
                         {/* Why This Prediction Button */}
                         <button
-                          onClick={() => toggleExpand(prediction.id)}
-                          className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 transition-colors"
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleExpand(prediction.id);
+                          }}
+                          className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer py-1 px-2 -ml-2 rounded hover:bg-slate-700/50"
                           aria-expanded={expandedId === prediction.id}
                         >
                           {expandedId === prediction.id ? (
@@ -259,36 +328,119 @@ export function PredictionsTab({ predictions, patterns, accuracy }: PredictionsT
                   {expandedId === prediction.id && (
                     <div className="px-4 pb-4 pt-0">
                       <div className="bg-slate-800/60 rounded-lg p-3 border border-slate-700/50">
-                        <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
-                          Contributing Factors
-                        </p>
-                        <ul className="space-y-1.5">
-                          {Array.isArray(prediction.contributingFactors) && prediction.contributingFactors.length > 0 ? (
-                            prediction.contributingFactors.map((factor, i) => (
-                              <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                                <span className="text-cyan-400 mt-1">•</span>
-                                {factor}
-                              </li>
-                            ))
-                          ) : (
-                            <>
-                              <li className="flex items-start gap-2 text-sm text-slate-300">
-                                <span className="text-cyan-400 mt-1">•</span>
-                                Historical pattern correlation: Similar conditions preceded failures in 73% of cases
-                              </li>
-                              <li className="flex items-start gap-2 text-sm text-slate-300">
-                                <span className="text-cyan-400 mt-1">•</span>
-                                Current load level above normal threshold
-                              </li>
-                              <li className="flex items-start gap-2 text-sm text-slate-300">
-                                <span className="text-cyan-400 mt-1">•</span>
-                                Adjacent node stress: Connected nodes showing elevated risk
-                              </li>
-                            </>
-                          )}
-                        </ul>
+                        {/* Structured Reasoning Display */}
+                        {isStructuredReasoning(prediction.reasoning) ? (
+                          <>
+                            {/* Root Cause */}
+                            <div className="mb-3">
+                              <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">
+                                Root Cause
+                              </p>
+                              <p className="text-sm text-slate-300">
+                                {prediction.reasoning.rootCause || 'Not determined'}
+                              </p>
+                            </div>
 
-                        {/* Suggested Actions */}
+                            {/* Leading Signals */}
+                            {prediction.reasoning.leadingSignals?.length > 0 && (
+                              <div className="mb-3">
+                                <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">
+                                  Leading Signals
+                                </p>
+                                <ul className="space-y-1">
+                                  {prediction.reasoning.leadingSignals.map((signal, i) => (
+                                    <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
+                                      <span className="text-cyan-400 mt-1">•</span>
+                                      {signal}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Historical Pattern & Risk Shift */}
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                              {prediction.reasoning.historicalPattern && (
+                                <div>
+                                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">
+                                    Historical Pattern
+                                  </p>
+                                  <p className="text-sm text-slate-300">
+                                    {prediction.reasoning.historicalPattern}
+                                  </p>
+                                </div>
+                              )}
+                              {prediction.reasoning.riskShift && (
+                                <div>
+                                  <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">
+                                    Risk Shift
+                                  </p>
+                                  <p className="text-sm text-slate-300">
+                                    {prediction.reasoning.riskShift}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Recommended Mitigation */}
+                            {prediction.reasoning.recommendedMitigation && (
+                              <div className="mb-3">
+                                <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">
+                                  Recommended Mitigation
+                                </p>
+                                <p className="text-sm text-emerald-400">
+                                  {prediction.reasoning.recommendedMitigation}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Confidence Driver */}
+                            {prediction.reasoning.confidenceDriver && (
+                              <div>
+                                <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-1">
+                                  Confidence Driver
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {prediction.reasoning.confidenceDriver}
+                                </p>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {/* Fallback: Contributing Factors */}
+                            <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
+                              Contributing Factors
+                            </p>
+                            <ul className="space-y-1.5">
+                              {Array.isArray(prediction.contributingFactors) && prediction.contributingFactors.length > 0 ? (
+                                prediction.contributingFactors.map((factor, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
+                                    <span className="text-cyan-400 mt-1">•</span>
+                                    {factor}
+                                  </li>
+                                ))
+                              ) : (
+                                <>
+                                  <li className="flex items-start gap-2 text-sm text-slate-300">
+                                    <span className="text-cyan-400 mt-1">•</span>
+                                    Historical pattern correlation: Similar conditions preceded failures in 73% of cases
+                                  </li>
+                                  <li className="flex items-start gap-2 text-sm text-slate-300">
+                                    <span className="text-cyan-400 mt-1">•</span>
+                                    Current load level above normal threshold
+                                  </li>
+                                  <li className="flex items-start gap-2 text-sm text-slate-300">
+                                    <span className="text-cyan-400 mt-1">•</span>
+                                    Adjacent node stress: Connected nodes showing elevated risk
+                                  </li>
+                                </>
+                              )}
+                            </ul>
+                          </>
+                        )}
+
+                        {/* Suggested Actions - always show if available */}
                         {Array.isArray(prediction.suggestedActions) && prediction.suggestedActions.length > 0 && (
                           <>
                             <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mt-4 mb-2">

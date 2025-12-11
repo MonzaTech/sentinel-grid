@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Activity, Shield, AlertTriangle, Zap, Clock, RefreshCw } from 'lucide-react';
-import type { Node, WeatherData } from '../types';
+import { Activity, Shield, AlertTriangle, Zap, Clock, RefreshCw, Download } from 'lucide-react';
+import type { Node, WeatherData, ScenarioTemplate, SeverityLevel } from '../types';
 
 interface ControlPanelProps {
   isRunning: boolean;
@@ -18,63 +18,38 @@ interface ControlPanelProps {
   onMitigateAll: () => Promise<unknown>;
 }
 
-// Incident Scenarios Presets - must match backend ThreatType
-const incidentScenarios = [
-  {
-    id: 'weather',
-    name: 'Weather Stress Test',
-    description: 'Simulate extreme weather impact on grid',
-    type: 'weather_stress',
-    severity: 0.7,
-  },
-  {
-    id: 'cyber',
-    name: 'Cyber Attack',
-    description: 'Simulated attack on control systems',
-    type: 'cyber_attack',
-    severity: 0.8,
-  },
-  {
-    id: 'overload',
-    name: 'System Overload',
-    description: 'Peak demand exceeds capacity',
-    type: 'overload',
-    severity: 0.75,
-  },
-  {
-    id: 'equipment',
-    name: 'Equipment Failure',
-    description: 'Major component malfunction',
-    type: 'equipment_failure',
-    severity: 0.6,
-  },
-  {
-    id: 'intrusion',
-    name: 'Physical Intrusion',
-    description: 'Unauthorized facility access',
-    type: 'physical_intrusion',
-    severity: 0.5,
-  },
-];
-
 export function ControlPanel({
   isRunning,
   criticalNodes,
   warningNodes,
   weather,
   onTriggerCascade,
-  onDeployThreat,
+  onDeployThreat: _onDeployThreat, // Unused - using API directly now
   onClearThreat,
   onMitigateAll,
 }: ControlPanelProps) {
-  const [selectedScenario, setSelectedScenario] = useState<string>('');
-  const [selectedSeverity, setSelectedSeverity] = useState<'low' | 'medium' | 'high'>('medium');
+  const [scenarioTemplates, setScenarioTemplates] = useState<ScenarioTemplate[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [selectedSeverity, setSelectedSeverity] = useState<SeverityLevel>('medium');
   const [isDeploying, setIsDeploying] = useState(false);
   const [isMitigating, setIsMitigating] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  // Fetch scenario templates from API
+  useEffect(() => {
+    fetch('/api/scenarios/templates')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          setScenarioTemplates(data.data);
+        }
+      })
+      .catch(err => console.error('Failed to fetch scenario templates:', err));
+  }, []);
 
   // Update timestamp periodically
   useEffect(() => {
@@ -114,27 +89,32 @@ export function ControlPanel({
   };
 
   const handleDeployScenario = async () => {
-    if (!selectedScenario) {
+    if (!selectedTemplate) {
       setError('Please select a scenario first');
       return;
     }
 
-    const scenario = incidentScenarios.find(s => s.id === selectedScenario);
-    if (!scenario) {
-      setError('Invalid scenario selected');
-      return;
-    }
-
-    // Adjust severity based on selection
-    const severityMultiplier = selectedSeverity === 'low' ? 0.6 : selectedSeverity === 'high' ? 1.3 : 1.0;
-    const adjustedSeverity = Math.min(1, scenario.severity * severityMultiplier);
-
     setIsDeploying(true);
     setError(null);
     try {
-      await onDeployThreat(scenario.type, adjustedSeverity);
-      setSuccess(`Deployed: ${scenario.name}`);
-      setSelectedScenario(''); // Reset selection
+      // Use the new scenarios/run API
+      const response = await fetch('/api/scenarios/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          templateId: selectedTemplate,
+          severity: selectedSeverity,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setSuccess(`Deployed: ${data.data?.templateName || 'Scenario'}`);
+        setSelectedTemplate(''); // Reset selection
+      } else {
+        throw new Error(data.message || 'Scenario deployment failed');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Scenario deployment failed');
     } finally {
@@ -171,8 +151,33 @@ export function ControlPanel({
     }
   };
 
-  const getSelectedScenario = () => {
-    return incidentScenarios.find(s => s.id === selectedScenario);
+  const handleExportLogs = async () => {
+    setIsExporting(true);
+    try {
+      const response = await fetch('/api/logs/export');
+      const data = await response.json();
+      
+      // Create and download file
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sentinel-grid-logs-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      setSuccess('Logs exported successfully');
+    } catch (err) {
+      setError('Failed to export logs');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const getSelectedTemplate = () => {
+    return scenarioTemplates.find(t => t.id === selectedTemplate);
   };
 
   return (
@@ -309,29 +314,29 @@ export function ControlPanel({
         </div>
       </div>
 
-      {/* ========== INCIDENT SCENARIOS ========== */}
+      {/* ========== SCENARIO LIBRARY ========== */}
       <div className="surface-card p-4 rounded-lg">
         <h3 className="text-section-title flex items-center gap-2 mb-4">
           <AlertTriangle className="w-4 h-4 text-amber-400" />
-          Incident Scenarios
+          Scenario Library
         </h3>
 
         <p className="text-xs text-slate-500 mb-3">
-          Select a preset scenario to test system resilience.
+          Select a scenario template to test system resilience.
         </p>
 
         {/* Scenario Selector */}
         <div className="mb-3">
           <select
-            value={selectedScenario}
-            onChange={(e) => setSelectedScenario(e.target.value)}
+            value={selectedTemplate}
+            onChange={(e) => setSelectedTemplate(e.target.value)}
             className="select-field text-sm"
-            aria-label="Select incident scenario"
+            aria-label="Select scenario template"
           >
             <option value="">Select scenario...</option>
-            {incidentScenarios.map((scenario) => (
-              <option key={scenario.id} value={scenario.id}>
-                {scenario.name}
+            {scenarioTemplates.map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.name}
               </option>
             ))}
           </select>
@@ -361,21 +366,24 @@ export function ControlPanel({
           </div>
         </div>
 
-        {/* Selected Scenario Info */}
-        {selectedScenario && getSelectedScenario() && (
+        {/* Selected Template Info */}
+        {selectedTemplate && getSelectedTemplate() && (
           <div className="bg-slate-800/50 rounded-lg p-3 mb-3">
             <p className="text-sm text-slate-200 font-medium">
-              {getSelectedScenario()?.name}
+              {getSelectedTemplate()?.name}
             </p>
             <p className="text-xs text-slate-500 mt-1">
-              {getSelectedScenario()?.description}
+              {getSelectedTemplate()?.description}
             </p>
-            <div className="flex items-center gap-4 mt-2 text-xs">
+            <div className="flex items-center gap-4 mt-2 text-xs flex-wrap">
               <span className="text-slate-400">
-                Type: <span className="text-slate-300">{getSelectedScenario()?.type.replace(/_/g, ' ')}</span>
+                Type: <span className="text-slate-300">{getSelectedTemplate()?.type.replace(/_/g, ' ')}</span>
               </span>
               <span className="text-slate-400">
-                Severity: <span className="text-amber-400">{((getSelectedScenario()?.severity || 0) * 100).toFixed(0)}%</span>
+                Horizon: <span className="text-cyan-400">{getSelectedTemplate()?.defaultHorizonHours}h</span>
+              </span>
+              <span className="text-slate-400">
+                Regions: <span className="text-slate-300">{getSelectedTemplate()?.targetRegions.join(', ')}</span>
               </span>
             </div>
           </div>
@@ -384,7 +392,7 @@ export function ControlPanel({
         {/* Deploy Button */}
         <button
           onClick={handleDeployScenario}
-          disabled={!selectedScenario || isDeploying}
+          disabled={!selectedTemplate || isDeploying}
           className="btn-danger w-full flex items-center justify-center gap-2"
         >
           {isDeploying ? (
@@ -393,7 +401,32 @@ export function ControlPanel({
               Deploying...
             </>
           ) : (
-            'Deploy Scenario'
+            'Run Scenario'
+          )}
+        </button>
+      </div>
+
+      {/* ========== LOGS EXPORT ========== */}
+      <div className="surface-card p-4 rounded-lg">
+        <h3 className="text-section-title flex items-center gap-2 mb-3">
+          <Download className="w-4 h-4 text-slate-400" />
+          Operator Logs
+        </h3>
+        <button
+          onClick={handleExportLogs}
+          disabled={isExporting}
+          className="btn-ghost w-full flex items-center justify-center gap-2"
+        >
+          {isExporting ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              Exporting...
+            </>
+          ) : (
+            <>
+              <Download className="w-4 h-4" />
+              Export Logs (JSON)
+            </>
           )}
         </button>
       </div>
