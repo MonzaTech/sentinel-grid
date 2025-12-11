@@ -1,0 +1,33 @@
+{
+  "name": "@sentinel-grid/storage",
+  "version": "1.0.0",
+  "description": "Sentinel Grid IPFS/Web3.Storage integration for decentralized data pinning",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "multiformats": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.6.0"
+  },
+  "keywords": [
+    "ipfs",
+    "web3-storage",
+    "sentinel-grid",
+    "decentralized-storage"
+  ],
+  "author": "Monza Tech LLC <alexandre@monzatech.io>",
+  "license": "MIT"
+}

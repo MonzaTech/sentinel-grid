@@ -1,0 +1,135 @@
+# ============================================================================
+# Sentinel Grid - Docker Compose
+# ============================================================================
+# Usage:
+#   docker-compose up              # Start all services
+#   docker-compose up -d           # Start in background
+#   docker-compose --profile full up  # Include IPFS
+#   docker-compose down            # Stop all services
+#   docker-compose logs -f         # View logs
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # Frontend (Nginx + React)
+  # ==========================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: packages/frontend/Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ==========================================================================
+  # Backend (Express + WebSocket)
+  # ==========================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile
+    ports:
+      - "${BACKEND_PORT:-4000}:4000"
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=4000
+      - HOST=0.0.0.0
+      - API_KEY=${API_KEY:-}
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+      - DB_PATH=/app/data/sentinel.db
+      - SIMULATION_SEED=${SIMULATION_SEED:-12345}
+      - NODE_COUNT=${NODE_COUNT:-200}
+      - TICK_INTERVAL_MS=${TICK_INTERVAL_MS:-3000}
+      - PREDICTION_INTERVAL_MS=${PREDICTION_INTERVAL_MS:-10000}
+      - WEB3STORAGE_TOKEN=${WEB3STORAGE_TOKEN:-}
+      - IPFS_LOCAL=${IPFS_LOCAL:-false}
+      - IPFS_API_URL=http://ipfs:5001
+      - PIN_HMAC_KEY=${PIN_HMAC_KEY:-change-in-production}
+      - HARDHAT_RPC=${HARDHAT_RPC:-http://hardhat:8545}
+      - BASE_RPC_URL=${BASE_RPC_URL:-}
+      - PRIVATE_KEY=${PRIVATE_KEY:-}
+      - CONTRACT_ADDRESS=${CONTRACT_ADDRESS:-}
+      - AUTO_ANCHOR=${AUTO_ANCHOR:-false}
+    volumes:
+      - backend-data:/app/data
+    networks:
+      - sentinel-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+
+  # ==========================================================================
+  # Hardhat Local Blockchain (Development)
+  # ==========================================================================
+  hardhat:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install -g hardhat && npx hardhat node --hostname 0.0.0.0"
+    ports:
+      - "${HARDHAT_PORT:-8545}:8545"
+    networks:
+      - sentinel-network
+    profiles:
+      - dev
+      - blockchain
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8545"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ==========================================================================
+  # IPFS Node (Optional - for local pinning)
+  # ==========================================================================
+  ipfs:
+    image: ipfs/kubo:latest
+    ports:
+      - "${IPFS_API_PORT:-5001}:5001"
+      - "${IPFS_GATEWAY_PORT:-8080}:8080"
+    volumes:
+      - ipfs-data:/data/ipfs
+    environment:
+      - IPFS_PROFILE=server
+    networks:
+      - sentinel-network
+    profiles:
+      - full
+      - ipfs
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5001/api/v0/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  sentinel-network:
+    driver: bridge
+    name: sentinel-grid
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  backend-data:
+    name: sentinel-backend-data
+  ipfs-data:
+    name: sentinel-ipfs-data

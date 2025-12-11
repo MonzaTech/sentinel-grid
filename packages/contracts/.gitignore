@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+artifacts/
+cache/
+typechain-types/
+
+# Environment
+.env
+.env.local
+
+# Coverage
+coverage/
+coverage.json
+
+# Gas reports
+gas-report.txt
+
+# IDE
+.idea/
+.vscode/
+
+# Misc
+*.log
+.DS_Store
+
+# Deployments (optional - you may want to commit these)
+# deployments/

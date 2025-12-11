@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sentinel Grid | Infrastructure Defense Platform</title>
+    <meta name="description" content="AI-powered critical infrastructure cascade failure prediction and prevention" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        margin: 0;
+        background: #020617;
+        color: #f1f5f9;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+      #initial-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #020617;
+        z-index: 9999;
+      }
+      #initial-loader.hidden { display: none; }
+      #initial-loader img { height: 32px; margin-bottom: 24px; opacity: 0.8; }
+      .loader-spinner {
+        width: 20px;
+        height: 20px;
+        border: 2px solid #1e2738;
+        border-top-color: #5b9bd5;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      .loader-text {
+        margin-top: 12px;
+        font-size: 13px;
+        color: #64748b;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <div id="initial-loader">
+      <img src="/logo.png" alt="Sentinel Grid" />
+      <div class="loader-spinner"></div>
+      <div class="loader-text">Initializing system...</div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Hide initial loader once React mounts
+      const checkRoot = setInterval(() => {
+        const root = document.getElementById('root');
+        const loader = document.getElementById('initial-loader');
+        if (root && root.children.length > 0 && loader) {
+          loader.classList.add('hidden');
+          clearInterval(checkRoot);
+        }
+      }, 100);
+      // Fallback: hide after 3 seconds regardless
+      setTimeout(() => {
+        const loader = document.getElementById('initial-loader');
+        if (loader) loader.classList.add('hidden');
+      }, 3000);
+    </script>
+  </body>
+</html>

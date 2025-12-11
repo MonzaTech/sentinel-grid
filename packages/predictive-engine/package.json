@@ -1,0 +1,44 @@
+{
+  "name": "@sentinel-grid/predictive-engine",
+  "version": "1.0.0",
+  "description": "Deterministic predictive engine for infrastructure monitoring and cascade failure prediction",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "sentinel-grid",
+    "predictive-analytics",
+    "infrastructure-monitoring",
+    "cascade-failure",
+    "risk-assessment"
+  ],
+  "author": "Monza Tech LLC",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/monzatech/sentinel-grid"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "@sentinel-grid/bridge",
+  "version": "1.0.0",
+  "description": "Sentinel Grid Cross-Chain Bridging - Hyperlane integration for multi-chain data anchoring",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/",
+    "contracts/"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "ethers": "^6.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "vitest": "^1.6.0"
+  },
+  "keywords": [
+    "hyperlane",
+    "cross-chain",
+    "bridge",
+    "sentinel-grid",
+    "interoperability"
+  ],
+  "author": "Monza Tech LLC <alexandre@monzatech.io>",
+  "license": "MIT"
+}
