@@ -66,6 +66,7 @@ router.post('/run', (0, errorHandler_js_1.asyncHandler)(async (req, res) => {
         low: 0.4,
         medium: 0.65,
         high: 0.9,
+        critical: 1.0,
     };
     const numericSeverity = severityMap[effectiveSeverity];
     // Calculate duration based on horizon

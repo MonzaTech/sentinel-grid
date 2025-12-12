@@ -476,6 +476,9 @@ class PredictiveEngine {
             cyber_vulnerability: 'Cyber vulnerability exposure indicated by',
             weather_impact: 'Weather impact expected from',
             capacity_breach: 'Capacity breach likely due to',
+            communication_loss: 'Communication loss risk identified via',
+            voltage_instability: 'Voltage instability detected from',
+            frequency_deviation: 'Frequency deviation anticipated due to',
         };
         return `${typeDescriptions[type]} ${factorDescriptions}. Historical patterns and real-time telemetry support this prediction.`;
     }

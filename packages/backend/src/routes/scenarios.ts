@@ -79,6 +79,7 @@ router.post('/run', asyncHandler(async (req: Request, res: Response) => {
     low: 0.4,
     medium: 0.65,
     high: 0.9,
+    critical: 1.0,
   };
 
   const numericSeverity = severityMap[effectiveSeverity];

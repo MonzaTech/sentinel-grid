@@ -28,6 +28,7 @@ const scenarioTemplates: ScenarioTemplate[] = [
     defaultSeverity: 'high',
     defaultHorizonHours: 6,
     targetRegions: ['North', 'Northeast', 'Central'],
+    category: 'environmental',
   },
   {
     id: 'tpl-line-outage',
@@ -37,6 +38,7 @@ const scenarioTemplates: ScenarioTemplate[] = [
     defaultSeverity: 'medium',
     defaultHorizonHours: 2,
     targetRegions: ['Central', 'South'],
+    category: 'physical',
   },
   {
     id: 'tpl-generator-loss',
@@ -46,6 +48,7 @@ const scenarioTemplates: ScenarioTemplate[] = [
     defaultSeverity: 'high',
     defaultHorizonHours: 1,
     targetRegions: ['West', 'Central'],
+    category: 'physical',
   },
   {
     id: 'tpl-cascade-stress',
@@ -55,6 +58,37 @@ const scenarioTemplates: ScenarioTemplate[] = [
     defaultSeverity: 'medium',
     defaultHorizonHours: 4,
     targetRegions: ['North', 'South', 'East', 'West'],
+    category: 'physical',
+  },
+  {
+    id: 'tpl-cyber-attack',
+    name: 'Cyber Intrusion Scenario',
+    description: 'Simulates coordinated cyber attack targeting SCADA systems',
+    type: 'cyber_attack',
+    defaultSeverity: 'high',
+    defaultHorizonHours: 2,
+    targetRegions: ['Central'],
+    category: 'cyber',
+  },
+  {
+    id: 'tpl-telecom-outage',
+    name: 'Communication Loss Event',
+    description: 'Telecom infrastructure failure isolating control systems',
+    type: 'telecom_outage',
+    defaultSeverity: 'medium',
+    defaultHorizonHours: 3,
+    targetRegions: ['East', 'West'],
+    category: 'cyber',
+  },
+  {
+    id: 'tpl-sensor-spoof',
+    name: 'Sensor Data Injection',
+    description: 'False data injection attack on monitoring systems',
+    type: 'sensor_spoof',
+    defaultSeverity: 'high',
+    defaultHorizonHours: 1,
+    targetRegions: ['North', 'Central'],
+    category: 'cyber',
   },
 ];
 
@@ -65,6 +99,10 @@ export const scenarioStore = {
 
   getById(id: string): ScenarioTemplate | undefined {
     return scenarioTemplates.find((t) => t.id === id);
+  },
+  
+  getByCategory(category: 'physical' | 'cyber' | 'environmental'): ScenarioTemplate[] {
+    return scenarioTemplates.filter((t) => t.category === category);
   },
 };
 
@@ -83,6 +121,14 @@ export const incidentStore = {
 
   getById(id: string): Incident | undefined {
     return incidents.get(id);
+  },
+  
+  getOpen(): Incident[] {
+    return this.getAll().filter((i) => i.status === 'open');
+  },
+  
+  getBySeverity(severity: SeverityLevel): Incident[] {
+    return this.getAll().filter((i) => i.severity === severity);
   },
 
   create(data: Omit<Incident, 'id'>): Incident {
@@ -141,9 +187,30 @@ export const incidentStore = {
     incidents.set(incident.id, incident);
     return incident;
   },
+  
+  close(id: string): Incident | undefined {
+    const incident = incidents.get(id);
+    if (!incident) return undefined;
+    
+    incident.status = 'closed';
+    incident.endedAt = new Date().toISOString();
+    return incident;
+  },
+  
+  mitigate(id: string): Incident | undefined {
+    const incident = incidents.get(id);
+    if (!incident) return undefined;
+    
+    incident.status = 'mitigated';
+    return incident;
+  },
 
   clear(): void {
     incidents.clear();
+  },
+  
+  count(): number {
+    return incidents.size;
   },
 };
 
@@ -152,7 +219,7 @@ export const incidentStore = {
 // ============================================================================
 
 const logs: LogEntry[] = [];
-const MAX_LOGS = 1000;
+const MAX_LOGS = 2000;
 
 export const logStore = {
   getAll(): LogEntry[] {
@@ -162,13 +229,58 @@ export const logStore = {
   getRecent(limit: number = 100): LogEntry[] {
     return logs.slice(-limit);
   },
+  
+  getBySource(source: LogSource): LogEntry[] {
+    return logs.filter((l) => l.source === source);
+  },
+  
+  getByCategory(category: LogCategory): LogEntry[] {
+    return logs.filter((l) => l.category === category);
+  },
+  
+  getBySeverity(severity: SeverityLevel): LogEntry[] {
+    return logs.filter((l) => l.severity === severity);
+  },
+  
+  query(filter: {
+    source?: LogSource;
+    category?: LogCategory;
+    severity?: SeverityLevel;
+    startTime?: string;
+    endTime?: string;
+    limit?: number;
+  }): LogEntry[] {
+    let result = [...logs];
+    
+    if (filter.source) {
+      result = result.filter((l) => l.source === filter.source);
+    }
+    if (filter.category) {
+      result = result.filter((l) => l.category === filter.category);
+    }
+    if (filter.severity) {
+      result = result.filter((l) => l.severity === filter.severity);
+    }
+    if (filter.startTime) {
+      result = result.filter((l) => l.timestamp >= filter.startTime!);
+    }
+    if (filter.endTime) {
+      result = result.filter((l) => l.timestamp <= filter.endTime!);
+    }
+    if (filter.limit) {
+      result = result.slice(-filter.limit);
+    }
+    
+    return result;
+  },
 
   add(
     source: LogSource,
     category: LogCategory,
     message: string,
     metadata?: Record<string, unknown>,
-    user?: string
+    user?: string,
+    severity?: SeverityLevel
   ): LogEntry {
     const entry: LogEntry = {
       id: uuidv4(),
@@ -178,6 +290,7 @@ export const logStore = {
       message,
       metadata,
       user,
+      severity,
     };
 
     logs.push(entry);
@@ -190,8 +303,8 @@ export const logStore = {
     return entry;
   },
 
-  addSystemLog(category: LogCategory, message: string, metadata?: Record<string, unknown>): LogEntry {
-    return this.add('system', category, message, metadata);
+  addSystemLog(category: LogCategory, message: string, metadata?: Record<string, unknown>, severity?: SeverityLevel): LogEntry {
+    return this.add('system', category, message, metadata, undefined, severity);
   },
 
   addOperatorLog(
@@ -206,9 +319,17 @@ export const logStore = {
   addSimulationLog(category: LogCategory, message: string, metadata?: Record<string, unknown>): LogEntry {
     return this.add('simulation', category, message, metadata);
   },
+  
+  addAuditLog(category: LogCategory, message: string, metadata?: Record<string, unknown>, user?: string): LogEntry {
+    return this.add('audit', category, message, metadata, user);
+  },
 
   clear(): void {
     logs.length = 0;
+  },
+  
+  count(): number {
+    return logs.length;
   },
 };
 
@@ -232,5 +353,16 @@ export const topologyStore = {
 
   clear(): void {
     activeTopology = null;
+  },
+  
+  getSummary(): { nodeCount: number; edgeCount: number; regions: string[] } | null {
+    if (!activeTopology) return null;
+    
+    const regions = [...new Set(activeTopology.nodes.map((n) => n.region))];
+    return {
+      nodeCount: activeTopology.nodes.length,
+      edgeCount: activeTopology.edges.length,
+      regions,
+    };
   },
 };

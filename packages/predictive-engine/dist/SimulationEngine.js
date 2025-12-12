@@ -29,6 +29,11 @@ const NODE_TYPES = [
     'telecom_tower',
     'water_pump',
     'control_center',
+    'solar_farm',
+    'wind_turbine',
+    'battery_storage',
+    'scada_server',
+    'relay_switch',
 ];
 const NODE_TYPE_WEIGHTS = {
     substation: 25,
@@ -38,6 +43,11 @@ const NODE_TYPE_WEIGHTS = {
     telecom_tower: 10,
     water_pump: 5,
     control_center: 5,
+    solar_farm: 8,
+    wind_turbine: 6,
+    battery_storage: 4,
+    scada_server: 3,
+    relay_switch: 4,
 };
 const NODE_TYPE_NAMES = {
     substation: ['Substation', 'Power Hub', 'Distribution Center'],
@@ -47,6 +57,11 @@ const NODE_TYPE_NAMES = {
     telecom_tower: ['Cell Tower', 'Communication Tower', 'Relay Station'],
     water_pump: ['Pump Station', 'Water Facility', 'Treatment Plant'],
     control_center: ['Control Center', 'Operations Hub', 'Command Center'],
+    solar_farm: ['Solar Farm', 'PV Array', 'Solar Generation'],
+    wind_turbine: ['Wind Farm', 'Wind Turbine', 'Wind Generation'],
+    battery_storage: ['Battery Storage', 'BESS Facility', 'Energy Storage'],
+    scada_server: ['SCADA Server', 'Control Server', 'RTU Gateway'],
+    relay_switch: ['Relay Switch', 'Circuit Breaker', 'Protection Relay'],
 };
 // ============================================================================
 // Node Initialization

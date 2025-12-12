@@ -93,6 +93,7 @@ router.post('/:id/mitigation', (0, errorHandler_js_1.asyncHandler)(async (req, r
         at: new Date().toISOString(),
         actionType,
         details,
+        automated: false,
     };
     const incident = index_js_1.incidentStore.addMitigationAction(id, action);
     if (!incident) {

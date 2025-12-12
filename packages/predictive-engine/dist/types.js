@@ -17,5 +17,8 @@ exports.DEFAULT_CONFIG = {
     weatherImpactMultiplier: 1.5,
     cascadePropagationRate: 0.3,
     mitigationEffectiveness: 0.4,
+    cyberAttackProbability: 0.01,
+    networkLatencyBase: 50,
+    packetLossBase: 0.01,
 };
 //# sourceMappingURL=types.js.map

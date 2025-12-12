@@ -18,6 +18,7 @@ const scenarioTemplates = [
         defaultSeverity: 'high',
         defaultHorizonHours: 6,
         targetRegions: ['North', 'Northeast', 'Central'],
+        category: 'environmental',
     },
     {
         id: 'tpl-line-outage',
@@ -27,6 +28,7 @@ const scenarioTemplates = [
         defaultSeverity: 'medium',
         defaultHorizonHours: 2,
         targetRegions: ['Central', 'South'],
+        category: 'physical',
     },
     {
         id: 'tpl-generator-loss',
@@ -36,6 +38,7 @@ const scenarioTemplates = [
         defaultSeverity: 'high',
         defaultHorizonHours: 1,
         targetRegions: ['West', 'Central'],
+        category: 'physical',
     },
     {
         id: 'tpl-cascade-stress',
@@ -45,6 +48,37 @@ const scenarioTemplates = [
         defaultSeverity: 'medium',
         defaultHorizonHours: 4,
         targetRegions: ['North', 'South', 'East', 'West'],
+        category: 'physical',
+    },
+    {
+        id: 'tpl-cyber-attack',
+        name: 'Cyber Intrusion Scenario',
+        description: 'Simulates coordinated cyber attack targeting SCADA systems',
+        type: 'cyber_attack',
+        defaultSeverity: 'high',
+        defaultHorizonHours: 2,
+        targetRegions: ['Central'],
+        category: 'cyber',
+    },
+    {
+        id: 'tpl-telecom-outage',
+        name: 'Communication Loss Event',
+        description: 'Telecom infrastructure failure isolating control systems',
+        type: 'telecom_outage',
+        defaultSeverity: 'medium',
+        defaultHorizonHours: 3,
+        targetRegions: ['East', 'West'],
+        category: 'cyber',
+    },
+    {
+        id: 'tpl-sensor-spoof',
+        name: 'Sensor Data Injection',
+        description: 'False data injection attack on monitoring systems',
+        type: 'sensor_spoof',
+        defaultSeverity: 'high',
+        defaultHorizonHours: 1,
+        targetRegions: ['North', 'Central'],
+        category: 'cyber',
     },
 ];
 exports.scenarioStore = {
@@ -53,6 +87,9 @@ exports.scenarioStore = {
     },
     getById(id) {
         return scenarioTemplates.find((t) => t.id === id);
+    },
+    getByCategory(category) {
+        return scenarioTemplates.filter((t) => t.category === category);
     },
 };
 // ============================================================================
@@ -65,6 +102,12 @@ exports.incidentStore = {
     },
     getById(id) {
         return incidents.get(id);
+    },
+    getOpen() {
+        return this.getAll().filter((i) => i.status === 'open');
+    },
+    getBySeverity(severity) {
+        return this.getAll().filter((i) => i.severity === severity);
     },
     create(data) {
         const incident = {
@@ -110,15 +153,33 @@ exports.incidentStore = {
         incidents.set(incident.id, incident);
         return incident;
     },
+    close(id) {
+        const incident = incidents.get(id);
+        if (!incident)
+            return undefined;
+        incident.status = 'closed';
+        incident.endedAt = new Date().toISOString();
+        return incident;
+    },
+    mitigate(id) {
+        const incident = incidents.get(id);
+        if (!incident)
+            return undefined;
+        incident.status = 'mitigated';
+        return incident;
+    },
     clear() {
         incidents.clear();
+    },
+    count() {
+        return incidents.size;
     },
 };
 // ============================================================================
 // Logs Store
 // ============================================================================
 const logs = [];
-const MAX_LOGS = 1000;
+const MAX_LOGS = 2000;
 exports.logStore = {
     getAll() {
         return [...logs];
@@ -126,7 +187,38 @@ exports.logStore = {
     getRecent(limit = 100) {
         return logs.slice(-limit);
     },
-    add(source, category, message, metadata, user) {
+    getBySource(source) {
+        return logs.filter((l) => l.source === source);
+    },
+    getByCategory(category) {
+        return logs.filter((l) => l.category === category);
+    },
+    getBySeverity(severity) {
+        return logs.filter((l) => l.severity === severity);
+    },
+    query(filter) {
+        let result = [...logs];
+        if (filter.source) {
+            result = result.filter((l) => l.source === filter.source);
+        }
+        if (filter.category) {
+            result = result.filter((l) => l.category === filter.category);
+        }
+        if (filter.severity) {
+            result = result.filter((l) => l.severity === filter.severity);
+        }
+        if (filter.startTime) {
+            result = result.filter((l) => l.timestamp >= filter.startTime);
+        }
+        if (filter.endTime) {
+            result = result.filter((l) => l.timestamp <= filter.endTime);
+        }
+        if (filter.limit) {
+            result = result.slice(-filter.limit);
+        }
+        return result;
+    },
+    add(source, category, message, metadata, user, severity) {
         const entry = {
             id: (0, uuid_1.v4)(),
             timestamp: new Date().toISOString(),
@@ -135,6 +227,7 @@ exports.logStore = {
             message,
             metadata,
             user,
+            severity,
         };
         logs.push(entry);
         // Trim if over limit
@@ -143,8 +236,8 @@ exports.logStore = {
         }
         return entry;
     },
-    addSystemLog(category, message, metadata) {
-        return this.add('system', category, message, metadata);
+    addSystemLog(category, message, metadata, severity) {
+        return this.add('system', category, message, metadata, undefined, severity);
     },
     addOperatorLog(category, message, metadata, user) {
         return this.add('operator', category, message, metadata, user || 'operator');
@@ -152,8 +245,14 @@ exports.logStore = {
     addSimulationLog(category, message, metadata) {
         return this.add('simulation', category, message, metadata);
     },
+    addAuditLog(category, message, metadata, user) {
+        return this.add('audit', category, message, metadata, user);
+    },
     clear() {
         logs.length = 0;
+    },
+    count() {
+        return logs.length;
     },
 };
 // ============================================================================
@@ -172,6 +271,16 @@ exports.topologyStore = {
     },
     clear() {
         activeTopology = null;
+    },
+    getSummary() {
+        if (!activeTopology)
+            return null;
+        const regions = [...new Set(activeTopology.nodes.map((n) => n.region))];
+        return {
+            nodeCount: activeTopology.nodes.length,
+            edgeCount: activeTopology.edges.length,
+            regions,
+        };
     },
 };
 //# sourceMappingURL=index.js.map

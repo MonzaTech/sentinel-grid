@@ -5,58 +5,126 @@
 
 import { Router, Request, Response } from 'express';
 import { getSimulation } from '../services/simulation.js';
-import { logStore } from '../stores/index.js';
+import { logStore, incidentStore } from '../stores/index.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
+import { createApiResponse, API_VERSION } from '../validation/index.js';
 
 const router = Router();
 
+// Track system start time for uptime
+const systemStartTime = Date.now();
+
+// Request metrics
+let requestCount = 0;
+let totalResponseTime = 0;
+
+// Middleware to track request metrics
+router.use((req, res, next) => {
+  const start = Date.now();
+  requestCount++;
+  res.on('finish', () => {
+    totalResponseTime += Date.now() - start;
+  });
+  next();
+});
+
 /**
  * GET /api/system/state
- * Returns current system state
+ * Returns current system state with extended metrics
  */
 router.get('/state', asyncHandler(async (_req: Request, res: Response) => {
   const sim = getSimulation();
   const state = sim.getSystemState();
   const healthScore = sim.getHealthScore();
+  const nodes = sim.getNodes();
   
-  res.json({
-    success: true,
-    data: {
-      ...state,
-      healthScore,
-      isRunning: sim.isSimulationRunning(),
-    },
-  });
+  // Calculate extended metrics
+  const nodeList = Object.values(nodes);
+  const cyberHealth = nodeList.length > 0 
+    ? nodeList.reduce((sum, n: any) => sum + (n.cyberHealth || 0.9), 0) / nodeList.length
+    : 0.9;
+  const avgLatency = nodeList.length > 0
+    ? nodeList.reduce((sum, n: any) => sum + (n.latency || 50), 0) / nodeList.length
+    : 50;
+  const isolatedNodes = nodeList.filter((n: any) => n.status === 'isolated').length;
+  
+  // Get active incidents
+  const incidents = incidentStore.getAll();
+  const openIncidents = incidents.filter(i => i.status === 'open').length;
+  
+  res.json(createApiResponse(true, {
+    ...state,
+    healthScore,
+    isRunning: sim.isSimulationRunning(),
+    
+    // Extended metrics
+    cyberHealth,
+    avgLatency,
+    isolatedNodes,
+    activeThreats: 0, // Would come from ThreatService
+    pendingMitigations: 0,
+    openIncidents,
+    
+    // Generation and demand
+    systemLoad: state.loadRatio,
+    generationCapacity: nodeList
+      .filter((n: any) => n.type === 'generator' || n.type === 'solar_farm' || n.type === 'wind_turbine')
+      .reduce((sum, n: any) => sum + (n.ratedCapacity || 100), 0),
+  }));
 }));
 
 /**
  * GET /api/system/health
- * Health check endpoint
+ * Enhanced health check endpoint with component status
  */
 router.get('/health', (_req: Request, res: Response) => {
   const sim = getSimulation();
   const state = sim.getSystemState();
+  const uptime = Math.floor((Date.now() - systemStartTime) / 1000);
   
-  res.json({
-    status: 'healthy',
+  // Check component health
+  const simulationUp = sim.isSimulationRunning() || state.totalNodes > 0;
+  const websocketUp = true; // Would check actual WS connections
+  const storageUp = true; // Would check DB connection
+  
+  const overallStatus = simulationUp && websocketUp && storageUp 
+    ? 'healthy' 
+    : (!simulationUp ? 'unhealthy' : 'degraded');
+  
+  const incidents = incidentStore.getAll();
+  
+  res.json(createApiResponse(true, {
+    status: overallStatus,
+    uptime,
     timestamp: new Date().toISOString(),
-    simulation: {
-      running: sim.isSimulationRunning(),
-      nodes: state.totalNodes,
-      critical: state.criticalNodes.length,
+    version: API_VERSION,
+    components: {
+      simulation: simulationUp ? 'up' : 'down',
+      websocket: websocketUp ? 'up' : 'down',
+      storage: storageUp ? 'up' : 'down',
     },
-  });
+    metrics: {
+      activeConnections: 0, // Would track WebSocket connections
+      nodesCount: state.totalNodes,
+      predictionsCount: sim.getPredictions().length,
+      incidentsOpen: incidents.filter(i => i.status === 'open').length,
+      memoryUsageMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+    },
+  }));
 });
 
 /**
  * GET /api/system/metrics
- * Prometheus-compatible metrics
+ * Prometheus-compatible metrics with extended data
  */
 router.get('/metrics', (_req: Request, res: Response) => {
   const sim = getSimulation();
   const state = sim.getSystemState();
   const healthScore = sim.getHealthScore();
   const accuracy = sim.getAccuracyMetrics();
+  const uptime = Math.floor((Date.now() - systemStartTime) / 1000);
+  const avgResponseTime = requestCount > 0 ? totalResponseTime / requestCount : 0;
+  const incidents = incidentStore.getAll();
   
   const metrics = `
 # HELP sentinel_system_health_score System health score (0-1)
@@ -66,6 +134,10 @@ sentinel_system_health_score ${healthScore.toFixed(4)}
 # HELP sentinel_nodes_total Total number of nodes
 # TYPE sentinel_nodes_total gauge
 sentinel_nodes_total ${state.totalNodes}
+
+# HELP sentinel_nodes_online Number of online nodes
+# TYPE sentinel_nodes_online gauge
+sentinel_nodes_online ${state.onlineNodes}
 
 # HELP sentinel_nodes_critical Number of critical nodes
 # TYPE sentinel_nodes_critical gauge
@@ -91,9 +163,37 @@ sentinel_load_ratio ${state.loadRatio.toFixed(4)}
 # TYPE sentinel_prediction_accuracy gauge
 sentinel_prediction_accuracy ${accuracy.accuracy.toFixed(4)}
 
+# HELP sentinel_prediction_total Total predictions generated
+# TYPE sentinel_prediction_total counter
+sentinel_prediction_total ${accuracy.totalPredictions}
+
+# HELP sentinel_incidents_open Open incidents count
+# TYPE sentinel_incidents_open gauge
+sentinel_incidents_open ${incidents.filter(i => i.status === 'open').length}
+
+# HELP sentinel_incidents_total Total incidents
+# TYPE sentinel_incidents_total counter
+sentinel_incidents_total ${incidents.length}
+
 # HELP sentinel_simulation_running Whether simulation is running
 # TYPE sentinel_simulation_running gauge
 sentinel_simulation_running ${sim.isSimulationRunning() ? 1 : 0}
+
+# HELP sentinel_uptime_seconds System uptime in seconds
+# TYPE sentinel_uptime_seconds counter
+sentinel_uptime_seconds ${uptime}
+
+# HELP sentinel_requests_total Total API requests
+# TYPE sentinel_requests_total counter
+sentinel_requests_total ${requestCount}
+
+# HELP sentinel_response_time_avg_ms Average response time
+# TYPE sentinel_response_time_avg_ms gauge
+sentinel_response_time_avg_ms ${avgResponseTime.toFixed(2)}
+
+# HELP sentinel_memory_usage_bytes Memory usage in bytes
+# TYPE sentinel_memory_usage_bytes gauge
+sentinel_memory_usage_bytes ${process.memoryUsage().heapUsed}
 `.trim();
 
   res.set('Content-Type', 'text/plain');
@@ -110,11 +210,9 @@ router.post('/start', (_req: Request, res: Response) => {
 
   logStore.addOperatorLog('config', 'Simulation started');
   
-  res.json({
-    success: true,
-    message: 'Simulation started',
+  res.json(createApiResponse(true, {
     isRunning: sim.isSimulationRunning(),
-  });
+  }, 'Simulation started'));
 });
 
 /**
@@ -127,11 +225,9 @@ router.post('/stop', (_req: Request, res: Response) => {
 
   logStore.addOperatorLog('config', 'Simulation stopped');
   
-  res.json({
-    success: true,
-    message: 'Simulation stopped',
+  res.json(createApiResponse(true, {
     isRunning: sim.isSimulationRunning(),
-  });
+  }, 'Simulation stopped'));
 });
 
 /**
@@ -144,10 +240,7 @@ router.post('/reset', (_req: Request, res: Response) => {
 
   logStore.addOperatorLog('config', 'Simulation reset');
   
-  res.json({
-    success: true,
-    message: 'Simulation reset',
-  });
+  res.json(createApiResponse(true, null, 'Simulation reset'));
 });
 
 export default router;
